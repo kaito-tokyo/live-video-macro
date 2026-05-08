@@ -1,0 +1,290 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+# SPDX-FileCopyrightText: 2025-2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build macOS
+
+# file: .github/workflows/plugin-build-macos.yml
+# author: Kaito Udagawa <umireon@kaito.tokyo>
+# date: 2026-05-08
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: The environment name for the build jobs, or empty string for no environment.
+        required: false
+        type: string
+        default: ''
+      VCPKG_BINARY_SOURCES:
+        description: VCPKG_BINARY_SOURCES environment variable for the build jobs.
+        required: true
+        type: string
+      vcpkg-version:
+        description: The version of vcpkg to clone.
+        required: true
+        type: string
+      codesign-enabled:
+        description: Whether to enable code signing and notarization steps.
+        required: true
+        type: boolean
+
+    secrets:
+      APP_STORE_CONNECT_ISSUER:
+        required: false
+      APP_STORE_CONNECT_KEY:
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        required: false
+      MACOS_SIGNING_APPLICATION_IDENTITY:
+        required: false
+      MACOS_SIGNING_CERT_PASSWORD:
+        required: false
+      MACOS_SIGNING_CERT:
+        required: false
+      MACOS_SIGNING_INSTALLER_IDENTITY:
+        required: false
+
+permissions: {}
+
+jobs:
+  build-macos-universal:
+    environment: ${{ inputs.environment }}
+    runs-on: macos-15
+    timeout-minutes: 180
+
+    permissions:
+      contents: read
+
+    env:
+      CLEAN_BASH_ENV: '${{ github.workspace }}/.github/scripts/clean-env-macos.bash'
+      FILTERED_PATH: '/opt/homebrew/opt/xcbeautify/bin:/opt/homebrew/opt/ninja/bin:/opt/homebrew/opt/cmake/bin:/opt/homebrew/opt/curl/bin:/opt/homebrew/opt/wget/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+      ROOT_VCPKG_ROOT: '${{ github.workspace }}/vcpkg'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Extract plugin buildspec
+        id: buildspec
+        uses: ./.github/actions/extract-buildspec
+
+      - name: Set up macOS Signing Certificates
+        if: inputs.codesign-enabled
+        id: codesign
+        uses: ./.github/actions/setup-macos-codesigning
+        with:
+          MACOS_SIGNING_APPLICATION_IDENTITY: '${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}'
+          MACOS_SIGNING_CERT: '${{ secrets.MACOS_SIGNING_CERT }}'
+          MACOS_SIGNING_CERT_PASSWORD: '${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}'
+
+      - name: Print CMake version on macOS
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          cmake --version
+
+      - name: Print Ninja version on macOS
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          ninja --version
+
+      - name: Print xcbeautify version on macOS
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          xcbeautify --version
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ inputs.vcpkg-version }}
+          persist-credentials: false
+          path: ${{ env.ROOT_VCPKG_ROOT }}
+          filter: blob:none
+
+      - name: Run bootstrap-vcpkg.sh
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          VCPKG_ROOT: '${{ env.ROOT_VCPKG_ROOT }}'
+        run: |
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Install dependencies from vcpkg (macOS arm64)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          VCPKG_BINARY_SOURCES: '${{ inputs.VCPKG_BINARY_SOURCES }}'
+          VCPKG_ROOT: '${{ env.ROOT_VCPKG_ROOT }}'
+        run: |
+          "$VCPKG_ROOT/vcpkg" install --x-install-root=./.deps_vendor/vcpkg_installed_arm64 --triplet=arm64-osx-obs
+
+      - name: Install dependencies from vcpkg (macOS x64)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          VCPKG_BINARY_SOURCES: '${{ inputs.VCPKG_BINARY_SOURCES }}'
+          VCPKG_ROOT: '${{ env.ROOT_VCPKG_ROOT }}'
+        run: |
+          "$VCPKG_ROOT/vcpkg" install --x-install-root=./.deps_vendor/vcpkg_installed_x64 --triplet=x64-osx-obs
+
+      - name: Lipo vcpkg (macOS)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          ./scripts/lipo_vcpkg_macos.sh \
+            ./.deps_vendor/vcpkg_installed_universal/universal-osx-obs \
+            ./.deps_vendor/vcpkg_installed_arm64/arm64-osx-obs \
+            ./.deps_vendor/vcpkg_installed_x64/x64-osx-obs
+
+      - name: Download dependencies (macOS)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: cmake -P ./scripts/download_deps.cmake
+
+      - name: Build libobs (macOS universal)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: ./scripts/build_libobs_macos.sh
+
+      - name: Configure (macOS universal)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          cmake --preset macos-ci
+
+      - name: Build (macOS universal)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          cmake --build --preset macos-ci | xcbeautify
+
+      - name: Install (macOS universal)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+        run: |
+          cmake --install build_macos --config RelWithDebInfo --strip --prefix 'release/payload/Library/Application Support/obs-studio/plugins'
+
+      - name: Package (macOS universal)
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'MACOS_SIGNING_APPLICATION_IDENTITY;MACOS_SIGNING_INSTALLER_IDENTITY;PLUGIN_BUNDLE_ID;PLUGIN_DISPLAY_NAME;PLUGIN_NAME;PLUGIN_VERSION'
+          MACOS_SIGNING_APPLICATION_IDENTITY: '${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}'
+          MACOS_SIGNING_INSTALLER_IDENTITY: '${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}'
+          PLUGIN_BUNDLE_ID: '${{ steps.buildspec.outputs.BUNDLE_ID }}'
+          PLUGIN_DISPLAY_NAME: '${{ steps.buildspec.outputs.DISPLAY_NAME }}'
+          PLUGIN_NAME: '${{ steps.buildspec.outputs.NAME }}'
+          PLUGIN_VERSION: '${{ steps.buildspec.outputs.VERSION }}'
+        run: |
+          PLUGIN_BUNDLE="release/payload/Library/Application Support/obs-studio/plugins/${PLUGIN_NAME}.plugin"
+
+          if ! [[ -d "${PLUGIN_BUNDLE}" ]]; then
+            echo "ERROR: Plugin bundle not found."
+            exit 1
+          fi
+
+          # Sign after strip installing
+          if [[ -n "${MACOS_SIGNING_APPLICATION_IDENTITY}" ]]; then
+            codesign --sign "${MACOS_SIGNING_APPLICATION_IDENTITY}" --force --deep --options runtime --timestamp "${PLUGIN_BUNDLE}"
+          fi
+
+          pkgbuild --root ./release/payload --identifier "${PLUGIN_BUNDLE_ID}" --version "${PLUGIN_VERSION}" release/component.pkg
+
+          {
+            printf '<?xml version="1.0" encoding="utf-8"?>\n'
+            printf '<installer-gui-script minSpecVersion="2">\n'
+            printf '  <title>%s</title>\n' "${PLUGIN_DISPLAY_NAME}"
+            printf '  <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>\n'
+            printf '  <domains enable_localSystem="false" enable_currentUserHome="true" enable_anywhere="false"/>\n'
+            printf '  <choices-outline>\n'
+            printf '    <line choice="default"/>\n'
+            printf '  </choices-outline>\n'
+            printf '  <choice id="default" title="%s" visible="false">\n' "${PLUGIN_DISPLAY_NAME}"
+            printf '    <pkg-ref id="%s"/>\n' "${PLUGIN_BUNDLE_ID}"
+            printf '  </choice>\n'
+            printf '  <pkg-ref id="%s" version="%s" onConclusion="none" auth="none">component.pkg</pkg-ref>\n' "${PLUGIN_BUNDLE_ID}" "${PLUGIN_VERSION}"
+            printf '</installer-gui-script>\n'
+          } | tee ./release/distribution.xml
+
+          PRODUCTBUILD_ARGS=(
+            --distribution release/distribution.xml
+            --package-path release
+          )
+
+          if [[ -n "${MACOS_SIGNING_INSTALLER_IDENTITY}" ]]; then
+            PRODUCTBUILD_ARGS+=(--sign "${MACOS_SIGNING_INSTALLER_IDENTITY}")
+          fi
+
+          productbuild "${PRODUCTBUILD_ARGS[@]}" "release/${PLUGIN_NAME}-${PLUGIN_VERSION}-macos-universal.pkg"
+
+      - name: Notarize Installer
+        if: inputs.codesign-enabled
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'APP_STORE_CONNECT_ISSUER;APP_STORE_CONNECT_KEY;APP_STORE_CONNECT_KEY_ID'
+          APP_STORE_CONNECT_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          KEY_FILE="$(mktemp -t APP_STORE_CONNECT_KEY)"
+
+          printenv APP_STORE_CONNECT_KEY >"$KEY_FILE"
+
+          xcrun notarytool submit ./release/*-macos-universal.pkg \
+            --issuer "${APP_STORE_CONNECT_ISSUER}" \
+            --key "$KEY_FILE" \
+            --key-id "${APP_STORE_CONNECT_KEY_ID}" \
+            --wait
+
+          xcrun stapler staple ./release/*-macos-universal.pkg
+
+      - name: Archive Plugin dSYM
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        working-directory: build_macos/RelWithDebInfo
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'PLUGIN_NAME;PLUGIN_VERSION'
+          PLUGIN_NAME: '${{ steps.buildspec.outputs.NAME }}'
+          PLUGIN_VERSION: '${{ steps.buildspec.outputs.VERSION }}'
+        run: |
+          tar -cJf "$GITHUB_WORKSPACE/release/$PLUGIN_NAME-$PLUGIN_VERSION-macos-universal.dSYM.tar.xz" "$PLUGIN_NAME.plugin.dSYM"
+
+      - name: Upload Plugin Binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.buildspec.outputs.NAME }}-pluginbinary-${{ runner.os }}-universal-${{ github.run_id }}
+          path: |
+            release/*-macos-universal.pkg
+            release/*-macos-universal.dSYM.tar.xz
+          if-no-files-found: error
+          retention-days: 7

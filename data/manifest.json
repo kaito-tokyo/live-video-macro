@@ -1,0 +1,14 @@
+{
+  "display_name": "Live Video Macro",
+  "id": "tokyo.kaito.live-video-macro",
+  "version": "0.1.0",
+  "name": "live-video-macro",
+  "description": "Macro plugin for OBS Studio",
+  "long_description": "Macro plugin for OBS Studio",
+  "os_arch": "windows-x64, macos, ubuntu-x86_64",
+  "urls": {
+    "repository": "https://github.com/kaito-tokyo/live-video-macro",
+    "website": "https://kaito-tokyo.github.io/live-video-macro/",
+    "support": "https://github.com/kaito-tokyo/live-video-macro/issues"
+  }
+}

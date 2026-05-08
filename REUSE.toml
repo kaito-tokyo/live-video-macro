@@ -1,0 +1,14 @@
+version = 1
+
+[[annotations]]
+path = [
+  "buildspec.json",
+  "CMakePresets.json",
+  "src/exported_symbols_linux.map",
+  "src/exported_symbols_macos.txt",
+  "src/exported_symbols_windows.def",
+  "vcpkg-configuration.json",
+  "vcpkg.json",
+]
+SPDX-FileCopyrightText = "2026 Kaito Udagawa <umireon@kaito.tokyo>"
+SPDX-License-Identifier = "CC0-1.0"
