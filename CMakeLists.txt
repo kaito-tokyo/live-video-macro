@@ -4,57 +4,26 @@
 
 cmake_minimum_required(VERSION 3.28)
 
-# Read buildspec.json for project metadata
-block(
-    PROPAGATE
-        PLUGIN_NAME
-        PLUGIN_VERSION
-        PLUGIN_AUTHOR
-        PLUGIN_EMAIL
-        PREBUILT_VERSION
-        QT6_VERSION
-        MACOS_BUNDLEID
-)
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/buildspec.json" BUILDSPEC_CONTENT)
-    string(JSON PLUGIN_NAME GET "${BUILDSPEC_CONTENT}" name)
-    string(JSON PLUGIN_VERSION GET "${BUILDSPEC_CONTENT}" version)
-    string(JSON PLUGIN_AUTHOR GET "${BUILDSPEC_CONTENT}" author)
-    string(JSON PLUGIN_EMAIL GET "${BUILDSPEC_CONTENT}" email)
-    string(
-        JSON
-        PREBUILT_VERSION
-        GET "${BUILDSPEC_CONTENT}"
-        dependencies
-        prebuilt
-        version
-    )
-    string(JSON QT6_VERSION GET "${BUILDSPEC_CONTENT}" dependencies qt6 version)
-    string(
-        JSON
-        MACOS_BUNDLEID
-        GET "${BUILDSPEC_CONTENT}"
-        platformConfig
-        macos
-        bundleId
-    )
+### Options
+set(PLUGIN_DISPLAY_NAME "Live Video Macro" CACHE STRING "Display name of plugin")
+set(PLUGIN_AUTHOR "Kaito Udagawa" CACHE STRING "Author of plugin")
+set(PLUGIN_EMAIL "umireon@kaito.tokyo" CACHE STRING "Author email of plugin")
+set(PLUGIN_BUILD_NUMBER "1" CACHE STRING "Build number in plugin metadata")
+set(PLUGIN_BUNDLE_ID "tokyo.kaito.live-video-macro" CACHE STRING "Bundle ID of plugin installer")
+set(PACKAGE_VERSION_SUFFIX "" CACHE STRING "Version suffix for plugin package")
+
+### Project
+block(PROPAGATE PLUGIN_VERSION)
+  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" VERSION_CONTENT)
+  string(STRIP "${VERSION_CONTENT}" PLUGIN_VERSION)
 endblock()
 
-if(DEFINED ENV{GITHUB_RUN_ID})
-    set(PLUGIN_BUILD_NUMBER "$ENV{GITHUB_RUN_ID}")
-else()
-    set(PLUGIN_BUILD_NUMBER "1")
-endif()
+project(live-video-macro VERSION "${PLUGIN_VERSION}" LANGUAGES C CXX)
+set(PLUGIN_NAME "${CMAKE_PROJECT_NAME}")
 
-project("${PLUGIN_NAME}" VERSION "${PLUGIN_VERSION}" LANGUAGES C CXX)
+include(GNUInstallDirs)
 
-set(PLUGIN_VERSION_MAJOR "${CMAKE_PROJECT_VERSION_MAJOR}")
-set(PLUGIN_VERSION_MINOR "${CMAKE_PROJECT_VERSION_MINOR}")
-set(PLUGIN_VERSION_PATCH "${CMAKE_PROJECT_VERSION_PATCH}")
-
-# Build options
-set(VCPKG_TARGET_TRIPLET "" CACHE STRING "Vcpkg target triplet to use")
-
-# Basic configuration
+### Global configurations
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 set(CMAKE_C_EXTENSIONS FALSE)
@@ -64,156 +33,122 @@ set(CMAKE_CXX_EXTENSIONS FALSE)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 if(MSVC)
-    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
-elseif(APPLE)
-    add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong)
-    add_link_options("-Wl,-no_warn_duplicate_libraries")
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  add_compile_options(
+    /utf-8
+    /Zc:preprocessor
+    $<$<COMPILE_LANGUAGE:CXX>:/permissive->
+    $<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>
+  )
 else()
-    add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong)
+  add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong)
 endif()
 
-# Include paths
-list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/common")
-if(MSVC)
-    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows")
-    list(
-        PREPEND
-        CMAKE_PREFIX_PATH
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-qt6-${QT6_VERSION}-x64"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-${PREBUILT_VERSION}-x64"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x64/Release/vcpkg_installed/x64-windows-static-md"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x64-prefix"
-    )
-elseif(APPLE)
-    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos")
-    list(
-        PREPEND
-        CMAKE_PREFIX_PATH
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/Frameworks"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-qt6-${QT6_VERSION}-universal"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-${PREBUILT_VERSION}-universal"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_universal_vcpkg_installed/universal-osx"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_universal-prefix"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/vcpkg_installed_universal/universal-osx-obs"
-    )
+set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RelWithDebInfo Release)
+
+### Configure paths
+if(DEFINED ENV{PLUGIN_BUILD_DIR})
+  set(PLUGIN_BUILD_DIR "$ENV{PLUGIN_BUILD_DIR}")
 else()
-    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/linux")
-    list(
-        PREPEND
-        CMAKE_PREFIX_PATH
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x86_64/Release/vcpkg_installed/x64-linux"
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x86_64-prefix"
-    )
+  set(PLUGIN_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
-if(VCPKG_TARGET_TRIPLET STREQUAL "")
-    message(STATUS "Build without vcpkg")
-else()
-    message(
-        STATUS
-        "Build with vcpkg with target triplet: ${VCPKG_TARGET_TRIPLET}"
-    )
-    list(
-        PREPEND
-        CMAKE_PREFIX_PATH
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/vcpkg_installed/${VCPKG_TARGET_TRIPLET}"
-    )
+if(APPLE)
+  list(
+    PREPEND
+    CMAKE_PREFIX_PATH
+    "${PLUGIN_BUILD_DIR}/.deps/obs-deps-prebuilt"
+    "${PLUGIN_BUILD_DIR}/.deps/obs-deps-qt6"
+    "${PLUGIN_BUILD_DIR}/obs_installed"
+    "${PLUGIN_BUILD_DIR}/obs_installed/Frameworks"
+    "${PLUGIN_BUILD_DIR}/vcpkg_ort_installed/universal-osx"
+    "${PLUGIN_BUILD_DIR}/ort_installed"
+    "${PLUGIN_BUILD_DIR}/vcpkg_installed/universal-osx-obs"
+  )
 endif()
 
-# Common initialization
-include(bootstrap)
-include(compilerconfig)
-include(defaults)
-include(helpers)
-
-# Dependent packages
-
-## PkgConfig
+### Package dependencies
 find_package(PkgConfig QUIET)
 
-## OBS and Qt
 find_package(libobs REQUIRED)
 find_package(obs-frontend-api REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core)
 
-## CURL
-find_package(CURL CONFIG QUIET)
+### Plugin main
+add_library(${CMAKE_PROJECT_NAME}_options INTERFACE)
 
-if(NOT CURL_FOUND AND PkgConfig_FOUND)
-    pkg_check_modules(PC_CURL libcurl IMPORTED_TARGET)
-    if(PC_CURL_FOUND)
-        add_library(CURL::libcurl ALIAS PkgConfig::PC_CURL)
-        set(CURL_FOUND TRUE)
-    endif()
+if(APPLE OR NOT MSVC)
+  target_compile_definitions(${CMAKE_PROJECT_NAME}_options INTERFACE SIMDE_ENABLE_OPENMP)
+  target_compile_options(${CMAKE_PROJECT_NAME}_options INTERFACE -fopenmp-simd -Wall -Wextra -Werror)
 endif()
 
-if(NOT CURL_FOUND)
-    message(FATAL_ERROR "CURL not found via CMake or pkg-config.")
-endif()
-
-# Plugin targets
 add_library(${CMAKE_PROJECT_NAME} MODULE)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp)
-target_compile_definitions(
-    ${CMAKE_PROJECT_NAME}
-    PRIVATE PLUGIN_VERSION="${PLUGIN_VERSION}"
+
+target_link_libraries(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE
+    ${CMAKE_PROJECT_NAME}_options
+    OBS::libobs
+    OBS::obs-frontend-api
 )
 
-# Exported symbols
+target_sources(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE
+    src/plugin-main.cpp
+)
+
+### Hide symbols
 if(APPLE)
-    target_link_options(
-        ${CMAKE_PROJECT_NAME}
-        PRIVATE
-            "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_macos.txt"
-    )
+  target_link_options(
+    ${CMAKE_PROJECT_NAME}
+    PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_macos.txt"
+  )
 elseif(MSVC)
-    target_sources(
-        ${CMAKE_PROJECT_NAME}
-        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_windows.def"
-    )
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_windows.def")
 else()
-    target_link_options(
-        ${CMAKE_PROJECT_NAME}
-        PRIVATE
-            "-Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_linux.map"
-            "-Wl,-Bsymbolic"
-    )
+  target_link_options(
+    ${CMAKE_PROJECT_NAME}
+    PRIVATE "-Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_linux.map" "-Wl,-Bsymbolic"
+  )
 endif()
 
-set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${CMAKE_PROJECT_NAME})
+### Install configurations
+if(APPLE)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/pkg/Distribution.xml.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/Distribution"
+    @ONLY
+  )
 
-# CPack configuration
-set(CPACK_ARCHIVE_THREADS 0)
-set(CPACK_DEBIAN_COMPRESSION_LEVEL 19)
-set(CPACK_DEBIAN_COMPRESSION_TYPE zstd)
-set(CPACK_DEBIAN_DEBUGINFO_PACKAGE TRUE)
-set(CPACK_DEBIAN_FILE_NAME
-    "${CMAKE_PROJECT_NAME}-${CMAKE_PROJECT_VERSION}-${CMAKE_C_LIBRARY_ARCHITECTURE}.deb"
-)
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS TRUE)
-set(CPACK_GENERATOR "DEB")
-set(CPACK_OUTPUT_FILE_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/release")
-set(CPACK_PACKAGE_CONTACT "${PLUGIN_AUTHOR} <${PLUGIN_EMAIL}>")
-set(CPACK_PACKAGE_NAME "${CMAKE_PROJECT_NAME}")
-set(CPACK_PACKAGE_VERSION "${CMAKE_PROJECT_VERSION}")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-set(CPACK_RPM_COMPRESSION_TYPE zstd)
-set(CPACK_RPM_PACKAGE_GROUP Unspecified)
-set(CPACK_RPM_PACKAGE_LICENSE GPL-3.0-or-later)
-set(CPACK_SET_DESTDIR TRUE)
-set(CPACK_VERBATIM_VARIABLES TRUE)
-set(CPACK_SOURCE_IGNORE_FILES
-    ".deps_vendor/"
-    ".git/"
-    "build_x86_64/"
-    "build_x64/"
-    "build_macos/"
-    "release/"
-    "vcpkg_installed/"
-)
+  set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION "plugin")
+  set_source_files_properties(${EFFECTS_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/effects")
+  set_source_files_properties(${LOCALE_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/locale")
+  set_source_files_properties(${MODELS_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/models")
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${EFFECTS_FILES} ${LOCALE_FILES} ${MODELS_FILES})
 
-# Include CPack after setting variables
-include(CPack)
+  install(
+    TARGETS "${CMAKE_PROJECT_NAME}"
+    BUNDLE DESTINATION "Library/Application Support/obs-studio/plugins"
+    LIBRARY DESTINATION "Library/Application Support/obs-studio/plugins"
+  )
+else()
+  message("Installing on this platform is not supported officially.")
+endif()
+
+### Export variables
+block()
+  set(SH_CONTENT "")
+  set(PS1_CONTENT "")
+
+  foreach(VAR_NAME PLUGIN_BUNDLE_ID PLUGIN_DISPLAY_NAME PLUGIN_NAME PLUGIN_VERSION)
+    set(VAR_VALUE "${${VAR_NAME}}")
+    if(NOT VAR_VALUE MATCHES [[^[-A-Za-z0-9._ ]+$]])
+      message(FATAL_ERROR "${VAR_NAME} contains unsupported characters: ${VAR_VALUE}")
+    endif()
+    string(APPEND SH_CONTENT "${VAR_NAME}=\'${VAR_VALUE}\'\n")
+    string(APPEND PS1_CONTENT "\$${VAR_NAME} = \'${VAR_VALUE}\'\n")
+  endforeach()
+
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cmake_export.sh" "${SH_CONTENT}")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cmake_export.ps1" "${PS1_CONTENT}")
+endblock()

@@ -11,8 +11,3 @@ updates:
       interval: weekly
     exclude-paths:
       - ".github/workflows/*.lock.yml"
-
-  - package-ecosystem: devcontainers
-    directory: /
-    schedule:
-      interval: weekly

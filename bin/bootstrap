@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+macos() {
+  brew install xcbeautify
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
+  shopt -s nullglob
+
+  if [[ "$(uname -s)" == Darwin ]]; then
+    macos
+  else
+    printf 'ERROR: Your platform is not supported. Exiting...\n' >&2
+    exit 1
+  fi
+fi

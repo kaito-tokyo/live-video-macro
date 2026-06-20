@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+vcpkg_default_git_tag=2026.04.27
+vcpkg_default_git_commit=56bb2411609227288b70117ead2c47585ba07713
+
+obs_studio_git_tag=31.1.1
+obs_studio_git_commit=a32b3f9f6d5e1cf6fa0f8105a2ed46ec0b4d991c
+
+prebuilt_macos_url=https://github.com/obsproject/obs-deps/releases/download/2025-07-11/macos-deps-2025-07-11-universal.tar.xz
+prebuilt_macos_sha256=495687e63383d1a287684b6e2e9bfe246bb8f156fe265926afb1a325af1edd2a
+
+qt6_macos_url=https://github.com/obsproject/obs-deps/releases/download/2025-07-11/macos-deps-qt6-2025-07-11-universal.tar.xz
+qt6_macos_sha256=d3f5f04b6ea486e032530bdf0187cbda9a54e0a49621a4c8ba984c5023998867
