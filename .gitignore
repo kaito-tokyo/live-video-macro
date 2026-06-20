@@ -2,10 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-.deps_vendor/
-.deps/
 .DS_Store
-.vscode/settings.json
-build_*/
-release/
-vcpkg/
+
+/.vscode/settings.json
+/.deps/
+/.vcpkg_archives/
+/*_installed/
+/build/
+/build_*/
+/obs-studio/
+/release/
+/vcpkg/

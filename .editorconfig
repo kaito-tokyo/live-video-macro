@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
 #
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: CC0-1.0
 
 root = true
 
@@ -12,14 +12,12 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
-[*.{c,h,cpp,hpp}]
-indent_style = tab
-indent_size = 8
-tab_width = 8
-
-[.gitconfig*]
+[*.psm1]
 indent_style = space
-indent_size = 8
+indent_size = 4
 
 [*.md]
 trim_trailing_whitespace = false
+
+[VERSION]
+insert_final_newline = false

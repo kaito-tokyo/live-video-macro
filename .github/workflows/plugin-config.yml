@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+# SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Plugin config
+
+# file: .github/workflows/workflow-config.yml
+# author: Kaito Udagawa <umireon@kaito.tokyo>
+# date: 2026-06-21
+
+on:
+  workflow_call:
+    outputs:
+      configJson:
+        description: Workflow config
+        value: ${{ jobs.workflow-config.outputs.configJson }}
+
+permissions: {}
+
+env:
+  MACOS_RUNS_ON: 'macos-15'
+  DEVELOPER_DIR: '/Applications/Xcode_16.4.app'
+  VCPKG_BINARY_SOURCES: 'clear;http,https://vcpkg-obs.kaito.tokyo/{name}/{version}/{sha},read'
+
+jobs:
+  workflow-config:
+    outputs:
+      configJson: ${{ steps.config.outputs.configJson }}
+    runs-on: ubuntu-slim
+    steps:
+      - name: config
+        id: config
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          configJson: '${{ toJson(env) }}'
+        run: |
+          printf 'configJson<<EOS\n%s\nEOS\n' "$configJson" | tee "$GITHUB_OUTPUT"
