@@ -239,24 +239,28 @@ jobs:
               "release/$PLUGIN_NAME-$PLUGIN_VERSION-macos-universal.pkg"
           fi
 
-
       - name: Notarize Installer
-        if: inputs.environment == 'production-macos'
+        if: inputs.codesign-enabled
         shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
         env:
-          CODESIGN_TEAM: '${{ steps.codesign.outputs.CODESIGN_TEAM }}'
-          MACOS_NOTARIZATION_PASSWORD: '${{ secrets.MACOS_NOTARIZATION_PASSWORD }}'
-          MACOS_NOTARIZATION_USERNAME: '${{ secrets.MACOS_NOTARIZATION_USERNAME }}'
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'APP_STORE_CONNECT_ISSUER;APP_STORE_CONNECT_KEY;APP_STORE_CONNECT_KEY_ID'
+          APP_STORE_CONNECT_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
-          . ./build/cmake_export.sh
+          KEY_FILE="$(mktemp -t APP_STORE_CONNECT_KEY)"
 
-          xcrun notarytool submit "release/$PLUGIN_NAME-$PLUGIN_VERSION-macos-universal.pkg" \
-            --apple-id "$MACOS_NOTARIZATION_USERNAME" \
-            --password "$MACOS_NOTARIZATION_PASSWORD" \
-            --team-id "$CODESIGN_TEAM" \
+          printenv APP_STORE_CONNECT_KEY >"$KEY_FILE"
+
+          xcrun notarytool submit ./release/*-macos-universal.pkg \
+            --issuer "${APP_STORE_CONNECT_ISSUER}" \
+            --key "$KEY_FILE" \
+            --key-id "${APP_STORE_CONNECT_KEY_ID}" \
             --wait
 
-          xcrun stapler staple "release/$PLUGIN_NAME-$PLUGIN_VERSION-macos-universal.pkg"
+          xcrun stapler staple ./release/*-macos-universal.pkg
 
       - name: Upload Plugin Binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
